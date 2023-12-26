@@ -133,6 +133,56 @@ def getMonthSlot(year, month):
       resdata["msg"] = str(error)
       return resdata
 
+# get for a month
+@app.route('/v1/date/<int:dt>/<int:month>/<int:year>/<string:id>', methods=['GET'])
+def getDateIdSlot(dt, month, year, id):
+    # Response data
+    resdata = {
+         "code": 200,
+         "msg": "success",
+         "data": None
+      }
+    
+    try:
+      service = build("calendar", "v3", credentials=creds)
+
+      data = [x for x in yachtdata if x['id'] == id]
+      name = ""
+      if len(data):
+        name = data[0]["name"]
+        start_date = datetime.datetime(year, month, dt, 0, 0, 0).isoformat() + 'Z'
+        end_date = datetime.datetime(year, month, dt, 23, 59, 59).isoformat() + 'Z'
+        req_body = {
+          "timeMin": start_date,
+          "timeMax": end_date,
+          "items": [{"id": id}]
+        }
+
+        response = service.freebusy().query(body=req_body).execute()
+        busy_periods = response['calendars'][id]["busy"]
+        # Calculate the free periods
+        free_periods = []
+        start_time = req_body['timeMin']
+        for period in busy_periods:
+            end_time = period['start']
+            if start_time < end_time:
+                free_periods.append({'start': start_time, 'end': end_time})
+            start_time = period['end']
+        end_time = req_body['timeMax']
+        if start_time < end_time:
+            free_periods.append({'start': start_time, 'end': end_time})
+        
+        resdata["data"] = {"name": name, "free": free_periods}
+      else:
+        resdata["code"] = 404
+        resdata["msg"] = "No such yacht"
+      
+      return resdata
+    
+    except Exception as error:
+      resdata["code"] = 500
+      resdata["msg"] = str(error)
+      return resdata
 
 if __name__ == "__main__":
   app.run()
