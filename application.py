@@ -76,7 +76,7 @@ def last_day_of_month(date):
 
 @app.route("/")
 def index():
-    return "<!doctype html><html><head><title>Yacht Calendar API</title></head><body><h1>WhatsApp Messaging App is Running!</h1></body></html>"
+    return "<!doctype html><html><head><title>Yacht Calendar API</title></head><body><h1>Yacht Calendar API</h1></body></html>"
 
 # get for a month
 @app.route('/v1/month/<int:year>/<int:month>', methods=['GET'])
