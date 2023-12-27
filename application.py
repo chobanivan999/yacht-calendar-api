@@ -42,7 +42,7 @@ if not creds or not creds.valid:
   calendar_list = service.calendarList().list(pageToken=page_token).execute()
   if not os.path.exists("yachts.json"):
     yachtsdata = []
-    omitids = ["calendar@theyachtclub.sg"]
+    omitids = ["calendar@theyachtclub.sg", "yachtclub-calendar@yachtcalendar.iam.gserviceaccount.com", "en.singapore#holiday@group.v.calendar.google.com"]
     while True:
           calendar_list = service.calendarList().list(pageToken=page_token).execute()
           for calendar_list_entry in calendar_list['items']:
@@ -78,6 +78,43 @@ def last_day_of_month(date):
 def index():
     return "<!doctype html><html><head><title>Yacht Calendar API</title></head><body><h1>Yacht Calendar API</h1></body></html>"
 
+@app.route("/v1/yachts")
+def getYachts():
+  # Response data
+  resdata = {
+        "code": 200,
+        "msg": "success",
+        "data": None
+    }
+  try:
+    # Get Yacht Calendar list
+    service = build("calendar", "v3", credentials=creds)
+    page_token = None
+    calendar_list = service.calendarList().list(pageToken=page_token).execute()
+    yachtsdata = []
+    omitids = ["calendar@theyachtclub.sg", "yachtclub-calendar@yachtcalendar.iam.gserviceaccount.com", "en.singapore#holiday@group.v.calendar.google.com"]
+    while True:
+          calendar_list = service.calendarList().list(pageToken=page_token).execute()
+          for calendar_list_entry in calendar_list['items']:
+              if not calendar_list_entry["id"] in omitids:
+                yachtsdata.append(
+                    {
+                      "id": calendar_list_entry["id"],
+                      "name": calendar_list_entry["summary"]
+                    }
+                )
+          page_token = calendar_list.get('nextPageToken')
+          if not page_token:
+              break
+    yachtsdata = sorted(yachtsdata, key=lambda k: k.get('name', 0))
+    resdata["data"] = yachtsdata
+    return resdata
+  
+  except Exception as error:
+      resdata["code"] = 500
+      resdata["msg"] = str(error)
+      return resdata
+          
 # get for a month
 @app.route('/v1/month/<int:year>/<int:month>', methods=['GET'])
 def getMonthSlot(year, month):
