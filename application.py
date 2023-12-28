@@ -221,5 +221,51 @@ def getDateIdSlot(dt, month, year, id):
       resdata["msg"] = str(error)
       return resdata
 
+# get for a date range
+@app.route('/v1/days/<int:month>/<int:year>/<int:start_day>/<int:end_day>', methods=['GET'])
+def getDateRangeSlot(month, year, start_day, end_day):
+    # Response data
+    resdata = {
+         "code": 200,
+         "msg": "success",
+         "data": None
+      }
+    
+    try:
+      service = build("calendar", "v3", credentials=creds)
+
+      start_date = datetime.datetime(year, month, start_day, 0, 0, 0).isoformat() + 'Z'
+      end_date = datetime.datetime(year, month, end_day, 23, 59, 59).isoformat() + 'Z'
+      req_body = {
+        "timeMin": start_date,
+        "timeMax": end_date,
+        "items": yacht_ids
+      }
+
+      response = service.freebusy().query(body=req_body).execute()
+      for i in range(len(yacht_ids)):
+        busy_periods = response['calendars'][yacht_ids[i]["id"]]["busy"]
+        # Calculate the free periods
+        free_periods = []
+        start_time = req_body['timeMin']
+        for period in busy_periods:
+            end_time = period['start']
+            if start_time < end_time:
+                free_periods.append({'start': start_time, 'end': end_time})
+            start_time = period['end']
+        end_time = req_body['timeMax']
+        if start_time < end_time:
+            free_periods.append({'start': start_time, 'end': end_time})
+
+        yachtdata[i]["free"] = free_periods
+        
+      resdata["data"] = yachtdata
+      return resdata
+    
+    except Exception as error:
+      resdata["code"] = 500
+      resdata["msg"] = str(error)
+      return resdata
+    
 if __name__ == "__main__":
   app.run()
