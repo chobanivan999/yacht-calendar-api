@@ -13,56 +13,11 @@ from googleapiclient.errors import HttpError
 
 # If modifying these scopes, delete the file token.json.
 SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
+omitids = ["calendar@theyachtclub.sg", "yachtclub-calendar@yachtcalendar.iam.gserviceaccount.com", "en.singapore#holiday@group.v.calendar.google.com"]
 
 app = Flask(__name__)
 CORS(app)
 
-creds = None
-# The file token.json stores the user's access and refresh tokens, and is
-# created automatically when the authorization flow completes for the first
-# time.
-if os.path.exists("token.json"):
-  creds = Credentials.from_authorized_user_file("token.json", SCOPES)
-# If there are no (valid) credentials available, let the user log in.
-if not creds or not creds.valid:
-  if creds and creds.expired and creds.refresh_token:
-    creds.refresh(Request())
-  else:
-    flow = InstalledAppFlow.from_client_secrets_file(
-        "credentials.json", SCOPES
-    )
-    creds = flow.run_local_server(port=0)
-  # Save the credentials for the next run
-  with open("token.json", "w") as token:
-    token.write(creds.to_json())
-
-  # Get Yacht Calendar list
-  service = build("calendar", "v3", credentials=creds)
-  page_token = None
-  calendar_list = service.calendarList().list(pageToken=page_token).execute()
-  if not os.path.exists("yachts.json"):
-    yachtsdata = []
-    omitids = ["calendar@theyachtclub.sg", "yachtclub-calendar@yachtcalendar.iam.gserviceaccount.com", "en.singapore#holiday@group.v.calendar.google.com"]
-    while True:
-          calendar_list = service.calendarList().list(pageToken=page_token).execute()
-          for calendar_list_entry in calendar_list['items']:
-              print (calendar_list_entry["id"], calendar_list_entry['summary'])
-              yachtsdata.append(
-                  {
-                    "id": calendar_list_entry["id"],
-                    "name": calendar_list_entry["summary"]
-                  }
-              )
-          page_token = calendar_list.get('nextPageToken')
-          if not page_token:
-              break
-    with open("yachts.json", "w") as yachts:
-      yachts.write(json.dumps(yachtsdata, indent=4))
-
-# Get yacht list
-f = open('yachts.json')
-yachtdata = json.load(f)
-yacht_ids = [{"id" : x["id"]} for x in yachtdata]
 
 def last_day_of_month(date):
     try:
@@ -74,11 +29,42 @@ def last_day_of_month(date):
        print("hello : ", str(ex))
        return {"type": "fail", "data": str(ex)}
 
+def checkToken(token, credentials):
+  tokenfile = "token.json"
+  credsfile = "credentials.json"
+
+  if os.path.exists(tokenfile):
+    os.remove(tokenfile)
+  if os.path.exists(credsfile):
+    os.remove(credsfile)
+
+  with open(tokenfile, "w") as tk:
+    tk.write(token)
+  with open(credsfile, "w") as cr:
+    cr.write(credentials)
+
+  creds = Credentials.from_authorized_user_file(tokenfile, SCOPES)
+  if not creds or not creds.valid:
+    if creds and creds.expired and creds.refresh_token:
+      creds.refresh(Request())
+    else:
+      flow = InstalledAppFlow.from_client_secrets_file(
+          credsfile, SCOPES
+      )
+      creds = flow.run_local_server(port=0)
+
+  if os.path.exists(tokenfile):
+    os.remove(tokenfile)
+  if os.path.exists(credsfile):
+    os.remove(credsfile)
+
+  return creds
+        
 @app.route("/")
 def index():
     return "<!doctype html><html><head><title>Yacht Calendar API</title></head><body><h1>Yacht Calendar API</h1></body></html>"
 
-@app.route("/v1/yachts")
+@app.route("/v1/yachts", methods=['POST'])
 def getYachts():
   # Response data
   resdata = {
@@ -87,12 +73,14 @@ def getYachts():
         "data": None
     }
   try:
+    token = request.values.get('token', '')
+    credentials = request.values.get('credentials', '')
+    creds = checkToken(token, credentials)
     # Get Yacht Calendar list
     service = build("calendar", "v3", credentials=creds)
     page_token = None
     calendar_list = service.calendarList().list(pageToken=page_token).execute()
     yachtsdata = []
-    omitids = ["calendar@theyachtclub.sg", "yachtclub-calendar@yachtcalendar.iam.gserviceaccount.com", "en.singapore#holiday@group.v.calendar.google.com"]
     while True:
           calendar_list = service.calendarList().list(pageToken=page_token).execute()
           for calendar_list_entry in calendar_list['items']:
@@ -107,6 +95,7 @@ def getYachts():
           if not page_token:
               break
     yachtsdata = sorted(yachtsdata, key=lambda k: k.get('name', 0))
+    yacht_ids = [{"id" : x["id"]} for x in yachtsdata]
     resdata["data"] = yachtsdata
     return resdata
   
@@ -116,7 +105,7 @@ def getYachts():
       return resdata
           
 # get for a month
-@app.route('/v1/month/<int:year>/<int:month>', methods=['GET'])
+@app.route('/v1/month/<int:year>/<int:month>', methods=['POST'])
 def getMonthSlot(year, month):
     # Response data
     resdata = {
@@ -126,11 +115,33 @@ def getMonthSlot(year, month):
       }
     
     try:
+      token = request.values.get('token', '')
+      credentials = request.values.get('credentials', '')
+      creds = checkToken(token, credentials)
+      # Get Yacht Calendar list
+      service = build("calendar", "v3", credentials=creds)
+      page_token = None
+      calendar_list = service.calendarList().list(pageToken=page_token).execute()
+      yachtsdata = []
+      while True:
+            calendar_list = service.calendarList().list(pageToken=page_token).execute()
+            for calendar_list_entry in calendar_list['items']:
+                if not calendar_list_entry["id"] in omitids:
+                  yachtsdata.append(
+                      {
+                        "id": calendar_list_entry["id"],
+                        "name": calendar_list_entry["summary"]
+                      }
+                  )
+            page_token = calendar_list.get('nextPageToken')
+            if not page_token:
+                break
+      yachtsdata = sorted(yachtsdata, key=lambda k: k.get('name', 0))
+      yacht_ids = [{"id" : x["id"]} for x in yachtsdata]
+
       lastdate_res = last_day_of_month(datetime.datetime(year, month, 1))
       if lastdate_res["type"] == "success":
         lastdate = lastdate_res["data"].day
-
-        service = build("calendar", "v3", credentials=creds)
 
         start_date = datetime.datetime(year, month, 1).isoformat() + 'Z'
         end_date = datetime.datetime(year, month, lastdate).isoformat() + 'Z'
@@ -155,9 +166,9 @@ def getMonthSlot(year, month):
           if start_time < end_time:
               free_periods.append({'start': start_time, 'end': end_time})
 
-          yachtdata[i]["free"] = free_periods
+          yachtsdata[i]["free"] = free_periods
         
-        resdata["data"] = yachtdata
+        resdata["data"] = yachtsdata
         return resdata
       
       else:
@@ -170,8 +181,8 @@ def getMonthSlot(year, month):
       resdata["msg"] = str(error)
       return resdata
 
-# get for a month
-@app.route('/v1/date/<int:dt>/<int:month>/<int:year>/<string:id>', methods=['GET'])
+# get slots of one day for a yacht id
+@app.route('/v1/date/<int:dt>/<int:month>/<int:year>/<string:id>', methods=['POST'])
 def getDateIdSlot(dt, month, year, id):
     # Response data
     resdata = {
@@ -181,38 +192,36 @@ def getDateIdSlot(dt, month, year, id):
       }
     
     try:
+      token = request.values.get('token', '')
+      credentials = request.values.get('credentials', '')
+      creds = checkToken(token, credentials)
+      # Get Yacht Calendar list
       service = build("calendar", "v3", credentials=creds)
+      yacht = service.calendarList().get(calendarId=id).execute()
+      name = yacht["summary"]
+      start_date = datetime.datetime(year, month, dt, 0, 0, 0).isoformat() + 'Z'
+      end_date = datetime.datetime(year, month, dt, 23, 59, 59).isoformat() + 'Z'
+      req_body = {
+        "timeMin": start_date,
+        "timeMax": end_date,
+        "items": [{"id": id}]
+      }
 
-      data = [x for x in yachtdata if x['id'] == id]
-      name = ""
-      if len(data):
-        name = data[0]["name"]
-        start_date = datetime.datetime(year, month, dt, 0, 0, 0).isoformat() + 'Z'
-        end_date = datetime.datetime(year, month, dt, 23, 59, 59).isoformat() + 'Z'
-        req_body = {
-          "timeMin": start_date,
-          "timeMax": end_date,
-          "items": [{"id": id}]
-        }
-
-        response = service.freebusy().query(body=req_body).execute()
-        busy_periods = response['calendars'][id]["busy"]
-        # Calculate the free periods
-        free_periods = []
-        start_time = req_body['timeMin']
-        for period in busy_periods:
-            end_time = period['start']
-            if start_time < end_time:
-                free_periods.append({'start': start_time, 'end': end_time})
-            start_time = period['end']
-        end_time = req_body['timeMax']
-        if start_time < end_time:
-            free_periods.append({'start': start_time, 'end': end_time})
-        
-        resdata["data"] = {"name": name, "free": free_periods}
-      else:
-        resdata["code"] = 404
-        resdata["msg"] = "No such yacht"
+      response = service.freebusy().query(body=req_body).execute()
+      busy_periods = response['calendars'][id]["busy"]
+      # Calculate the free periods
+      free_periods = []
+      start_time = req_body['timeMin']
+      for period in busy_periods:
+          end_time = period['start']
+          if start_time < end_time:
+              free_periods.append({'start': start_time, 'end': end_time})
+          start_time = period['end']
+      end_time = req_body['timeMax']
+      if start_time < end_time:
+          free_periods.append({'start': start_time, 'end': end_time})
+      
+      resdata["data"] = {"name": name, "free": free_periods}
       
       return resdata
     
@@ -222,7 +231,7 @@ def getDateIdSlot(dt, month, year, id):
       return resdata
 
 # get for a date range
-@app.route('/v1/days/<int:month>/<int:year>/<int:start_day>/<int:end_day>', methods=['GET'])
+@app.route('/v1/days/<int:month>/<int:year>/<int:start_day>/<int:end_day>', methods=['POST'])
 def getDateRangeSlot(month, year, start_day, end_day):
     # Response data
     resdata = {
@@ -232,7 +241,29 @@ def getDateRangeSlot(month, year, start_day, end_day):
       }
     
     try:
+      token = request.values.get('token', '')
+      credentials = request.values.get('credentials', '')
+      creds = checkToken(token, credentials)
       service = build("calendar", "v3", credentials=creds)
+      page_token = None
+      calendar_list = service.calendarList().list(pageToken=page_token).execute()
+      yachtsdata = []
+      
+      while True:
+            calendar_list = service.calendarList().list(pageToken=page_token).execute()
+            for calendar_list_entry in calendar_list['items']:
+                if not calendar_list_entry["id"] in omitids:
+                  yachtsdata.append(
+                      {
+                        "id": calendar_list_entry["id"],
+                        "name": calendar_list_entry["summary"]
+                      }
+                  )
+            page_token = calendar_list.get('nextPageToken')
+            if not page_token:
+                break
+      yachtsdata = sorted(yachtsdata, key=lambda k: k.get('name', 0))
+      yacht_ids = [{"id" : x["id"]} for x in yachtsdata]
 
       start_date = datetime.datetime(year, month, start_day, 0, 0, 0).isoformat() + 'Z'
       end_date = datetime.datetime(year, month, end_day, 23, 59, 59).isoformat() + 'Z'
@@ -257,15 +288,15 @@ def getDateRangeSlot(month, year, start_day, end_day):
         if start_time < end_time:
             free_periods.append({'start': start_time, 'end': end_time})
 
-        yachtdata[i]["free"] = free_periods
+        yachtsdata[i]["free"] = free_periods
         
-      resdata["data"] = yachtdata
+      resdata["data"] = yachtsdata
       return resdata
     
     except Exception as error:
       resdata["code"] = 500
       resdata["msg"] = str(error)
       return resdata
-    
+
 if __name__ == "__main__":
   app.run()
