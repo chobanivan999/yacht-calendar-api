@@ -29,35 +29,30 @@ def last_day_of_month(date):
        print("hello : ", str(ex))
        return {"type": "fail", "data": str(ex)}
 
-def checkToken(token, credentials):
+def checkToken(credentials):
   tokenfile = "token.json"
   credsfile = "credentials.json"
+  creds = None
+  cf = open(credsfile)
+  cr1 = json.loads(credentials)["installed"]
+  cr2 = json.load(cf)["installed"]
+  if cr1["client_secret"] == cr2["client_secret"] and cr1["client_id"] == cr2["client_id"]:
+    if os.path.exists(tokenfile):
+      creds = Credentials.from_authorized_user_file(tokenfile, SCOPES)
+    if not creds or not creds.valid:
+      if creds and creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+      else:
+        flow = InstalledAppFlow.from_client_secrets_file(
+            credsfile, SCOPES
+        )
+        creds = flow.run_local_server(port=0)
 
-  if os.path.exists(tokenfile):
-    os.remove(tokenfile)
-  if os.path.exists(credsfile):
-    os.remove(credsfile)
+      # Save the credentials for the next run
+      with open(tokenfile, "w") as token:
+        token.write(creds.to_json())
 
-  with open(tokenfile, "w") as tk:
-    tk.write(token)
-  with open(credsfile, "w") as cr:
-    cr.write(credentials)
-
-  creds = Credentials.from_authorized_user_file(tokenfile, SCOPES)
-  if not creds or not creds.valid:
-    if creds and creds.expired and creds.refresh_token:
-      creds.refresh(Request())
-    else:
-      flow = InstalledAppFlow.from_client_secrets_file(
-          credsfile, SCOPES
-      )
-      creds = flow.run_local_server(port=0)
-
-  if os.path.exists(tokenfile):
-    os.remove(tokenfile)
-  if os.path.exists(credsfile):
-    os.remove(credsfile)
-
+  cf.close()
   return creds
         
 @app.route("/")
@@ -73,9 +68,8 @@ def getYachts():
         "data": None
     }
   try:
-    token = request.values.get('token', '')
     credentials = request.values.get('credentials', '')
-    creds = checkToken(token, credentials)
+    creds = checkToken(credentials)
     # Get Yacht Calendar list
     service = build("calendar", "v3", credentials=creds)
     page_token = None
@@ -117,7 +111,7 @@ def getMonthSlot(year, month):
     try:
       token = request.values.get('token', '')
       credentials = request.values.get('credentials', '')
-      creds = checkToken(token, credentials)
+      creds = checkToken(credentials)
       # Get Yacht Calendar list
       service = build("calendar", "v3", credentials=creds)
       page_token = None
@@ -194,7 +188,7 @@ def getDateIdSlot(dt, month, year, id):
     try:
       token = request.values.get('token', '')
       credentials = request.values.get('credentials', '')
-      creds = checkToken(token, credentials)
+      creds = checkToken(credentials)
       # Get Yacht Calendar list
       service = build("calendar", "v3", credentials=creds)
       yacht = service.calendarList().get(calendarId=id).execute()
@@ -243,7 +237,7 @@ def getDateRangeSlot(month, year, start_day, end_day):
     try:
       token = request.values.get('token', '')
       credentials = request.values.get('credentials', '')
-      creds = checkToken(token, credentials)
+      creds = checkToken(credentials)
       service = build("calendar", "v3", credentials=creds)
       page_token = None
       calendar_list = service.calendarList().list(pageToken=page_token).execute()
